@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Wars: Bot vs Bot</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-color: #f8fafc;
+            --accent-color: #38bdf8;
+            --border-color: #334155;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+        }
+
+        header {
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--accent-color);
+        }
+
+        header p {
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        /* Responsive Layout Container */
+        .game-container {
+            display: flex;
+            gap: 15px;
+            max-width: 1200px;
+            width: 100%;
+            background: var(--panel-bg);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        /* Desktop layout (Horizontal) */
+        @media (min-width: 768px) {
+            .game-container {
+                flex-direction: row;
+            }
+            canvas {
+                width: 600px;
+                height: 400px;
+            }
+        }
+
+        /* Mobile layout (Vertical) */
+        @media (max-width: 767px) {
+            .game-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            canvas {
+                width: 100%;
+                max-width: 400px;
+                height: 400px;
+            }
+        }
+
+        canvas {
+            background: #020617;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            cursor: crosshair;
+        }
+
+        .sidebar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .section {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .section h3 {
+            font-size: 0.95rem;
+            margin-bottom: 8px;
+            color: var(--accent-color);
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 6px;
+        }
+
+        button {
+            background: #334155;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #475569;
+        }
+
+        button.active {
+            background: var(--accent-color);
+            color: #0f172a;
+        }
+
+        button.primary {
+            background: #0284c7;
+            grid-column: span 2;
+        }
+
+        button.primary:hover {
+            background: #0369a1;
+        }
+
+        .log-box {
+            background: #020617;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 8px;
+            height: 110px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #cbd5e1;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Graph Wars: Bot vs Bot</h1>
+        <p>Place elements, pick your bots, and watch them calculate their attacks!</p>
+    </header>
+
+    <div class="game-container">
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        
+        <div class="sidebar">
+            <div class="section">
+                <h3>Placement Mode</h3>
+                <div class="controls-grid">
+                    <button id="mode-bot1" class="active" onclick="setMode('bot1')">Add Bot A</button>
+                    <button id="mode-bot2" onclick="setMode('bot2')">Add Bot B</button>
+                    <button id="mode-obs" onclick="setMode('obstacle')">Add Obstacle</button>
+                    <button onclick="clearMap()">Clear Map</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Simulation Controls</h3>
+                <div class="controls-grid">
+                    <button id="startBtn" class="primary" onclick="toggleSimulation()">Start Battle</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Combat Log</h3>
+                <div id="logBox" class="log-box">
+                    <div class="log-entry">Setup canvas. Place entities and start battle!</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const logBox = document.getElementById('logBox');
+
+    let currentMode = 'bot1'; // 'bot1', 'bot2', 'obstacle'
+    let isRunning = false;
+    let turnTimer = 0;
+    let activeBotIndex = 0;
+
+    // Entities
+    let bots = [];
+    let obstacles = [];
+    let currentAttack = null; // Visual projectile/graph wave
+
+    class Bot {
+        constructor(x, y, team, type) {
+            this.x = x;
+            this.y = y;
+            this.team = team; // 1 or 2
+            this.type = type; // 'sin', 'sniper', 'normal'
+            this.hp = 100;
+            this.maxHp = 100;
+            this.radius = 16;
+        }
+
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.team === 1 ? '#38bdf8' : '#f43f5e';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+            ctx.closePath();
+
+            // Draw Health Bar
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(this.x - 20, this.y - 25, 40, 5);
+            ctx.fillStyle = '#22c55e';
+            ctx.fillRect(this.x - 20, this.y - 25, 40 * (this.hp / this.maxHp), 5);
+
+            // Draw Label
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(`${this.type.toUpperCase()}`, this.x, this.y + 4);
+        }
+    }
+
+    class Obstacle {
+        constructor(x, y) {
+            this.x = x;
+            this.y = y;
+            this.width = 40;
+            this.height = 40;
+        }
+
+        draw() {
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+            ctx.strokeStyle = '#64748b';
+            ctx.strokeRect(this.x - this.width/2, this.y - this.height/2, this.width, this.height);
+        }
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        ['bot1', 'bot2', 'obs'].forEach(m => {
+            let btnId = m === 'obs' ? 'mode-obs' : `mode-${m}`;
+            document.getElementById(btnId).classList.remove('active');
+        });
+        if(mode === 'obstacle') document.getElementById('mode-obs').classList.add('active');
+        else document.getElementById(`mode-${mode}`).classList.add('active');
+    }
+
+    canvas.addEventListener('click', (e) => {
+        if (isRunning) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        if (currentMode === 'bot1') {
+            // Remove existing team 1 bot if any, or keep adding
+            bots = bots.filter(b => b.team !== 1);
+            bots.push(new Bot(x, y, 1, Math.random() > 0.5 ? 'sin' : 'normal'));
+            log("Placed Bot Team 1");
+        } else if (currentMode === 'bot2') {
+            bots = bots.filter(b => b.team !== 2);
+            bots.push(new Bot(x, y, 2, 'sniper'));
+            log("Placed Bot Team 2");
+        } else if (currentMode === 'obstacle') {
+            obstacles.push(new Obstacle(x, y));
+            log("Placed Obstacle");
+        }
+        drawScene();
+    });
+
+    function clearMap() {
+        bots = [];
+        obstacles = [];
+        isRunning = false;
+        document.getElementById('startBtn').innerText = "Start Battle";
+        log("Map cleared.");
+        drawScene();
+    }
+
+    function log(text) {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerText = text;
+        logBox.appendChild(entry);
+        logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function toggleSimulation() {
+        if (bots.filter(b => b.team === 1).length === 0 || bots.filter(b => b.team === 2).length === 0) {
+            alert("Please place at least one bot for each team!");
+            return;
+        }
+
+        isRunning = !isRunning;
+        document.getElementById('startBtn').innerText = isRunning ? "Pause Battle" : "Resume Battle";
+        if (isRunning) {
+            log("Battle started!");
+            runTurn();
+        }
+    }
+
+    function runTurn() {
+        if (!isRunning) return;
+
+        let livingBots = bots.filter(b => b.hp > 0);
+        if (livingBots.length <= 1) {
+            log("Battle Over! Check remaining bots.");
+            isRunning = false;
+            document.getElementById('startBtn').innerText = "Start Battle";
+            return;
+        }
+
+        activeBotIndex = activeBotIndex % livingBots.length;
+        let attacker = livingBots[activeBotIndex];
+        let targets = livingBots.filter(b => b.team !== attacker.team);
+
+        if (targets.length > 0) {
+            let target = targets[Math.floor(Math.random() * targets.length)];
+            executeAttack(attacker, target);
+        }
+
+        activeBotIndex++;
+        setTimeout(runTurn, 2500); // Wait between turns
+    }
+
+    function executeAttack(attacker, target) {
+        let formulaStr = "";
+        let damage = 20;
+
+        if (attacker.type === 'sin') {
+            formulaStr = `f(x) = 15 * sin(x/10) + 25`;
+            damage = Math.floor(15 + Math.random() * 15);
+            log(`[Sin Bot] calculates wave attack: ${formulaStr}`);
+        } else if (attacker.type === 'sniper') {
+            formulaStr = `f(x) = 2x + 5`;
+            damage = 35; // high precision, high damage
+            log(`[Sniper Bot] shoots minimal linear formula: ${formulaStr}`);
+        } else {
+            formulaStr = `f(x) = -0.1x^2 + 40`;
+            damage = 25;
+            log(`[Normal Bot] fires parabolic formula: ${formulaStr}`);
+        }
+
+        target.hp -= damage;
+        if (target.hp < 0) target.hp = 0;
+        log(`-> Hit target for ${damage} damage! Target HP: ${target.hp}`);
+
+        // Trigger visual attack line effect
+        currentAttack = { start: attacker, end: target };
+        setTimeout(() => { currentAttack = null; }, 800);
+
+        drawScene();
+    }
+
+    function drawScene() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Draw obstacles
+        obstacles.forEach(obs => obs.draw());
+
+        // Draw bots
+        bots.forEach(bot => bot.draw());
+
+        // Draw attack beam if active
+        if (currentAttack) {
+            ctx.beginPath();
+            ctx.moveTo(currentAttack.start.x, currentAttack.start.y);
+            ctx.lineTo(currentAttack.end.x, currentAttack.end.y);
+            ctx.strokeStyle = '#facc15';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.closePath();
+        }
+    }
+
+    // Initial default placement for quick testing
+    bots.push(new Bot(100, 200, 1, 'sin'));
+    bots.push(new Bot(500, 200, 2, 'sniper'));
+    obstacles.push(new Obstacle(300, 150));
+    obstacles.push(new Obstacle(300, 250));
+    drawScene();
+</script>
+
+</body>
+</html>
